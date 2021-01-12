@@ -22,7 +22,12 @@ func fatalErr(err error) {
 
 var createFileMutex = sync.Mutex{}
 
+// createFile creates file from given path
+// if filePath already exists then it adds prefix (1) in the end
+// if (1) is already present too then it becomes (2) then (3) and so on
+// return opened os.File must me closed after using.
 func createFile(filePath string) (*os.File, error) {
+	filePath = *destDir + filePath
 	createFileMutex.Lock()
 	defer createFileMutex.Unlock()
 
@@ -56,6 +61,7 @@ func createFile(filePath string) (*os.File, error) {
 
 }
 
+// downloadingFileName determines file name for given url.
 func downloadingFileName(ur string) (string, error) {
 	u, err := url.Parse(ur)
 	if err != nil {
@@ -66,6 +72,7 @@ func downloadingFileName(ur string) (string, error) {
 	return ss[len(ss)-1], nil
 }
 
+// downloadFromURL downloads single file from url.
 func downloadFromURL(u string) {
 	resp, err := http.Get(u)
 	if err != nil {
@@ -84,11 +91,15 @@ func downloadFromURL(u string) {
 	if err != nil {
 		return
 	}
-	defer out.Close()
+	defer func() {
+		_ = out.Close()
+	}()
 
 	_, err = io.Copy(out, resp.Body)
 }
 
+// downloadFiles downloads all files from url concurrently
+// finishes when all downloads are finished.
 func downloadFiles(urls []string) {
 	var wg sync.WaitGroup
 	for _, u := range urls {
@@ -100,6 +111,8 @@ func downloadFiles(urls []string) {
 	}
 	wg.Wait()
 }
+
+// parseFile parses JSON file.
 func parseFile(p string) {
 	if path.Ext(p) != ".json" {
 		return
@@ -131,6 +144,8 @@ func parseFile(p string) {
 	downloadFiles(urls)
 }
 
+// parseFiles iterates over directories and file and searches for
+// exported slack JSON files.
 func parseFiles(p string, files []os.FileInfo) {
 	for _, f := range files {
 		newP := path.Join(p, f.Name())
@@ -153,14 +168,16 @@ type Message struct {
 	} `json:"files"`
 }
 
+var srcDir = flag.String("src", "", "Slack export folder")
+var destDir = flag.String("dest", "", "Destination of exported files")
+
 func main() {
-	dir := flag.String("f", "", "Slack export folder")
 	flag.Parse()
 
-	files, err := ioutil.ReadDir(*dir)
+	files, err := ioutil.ReadDir(*srcDir)
 	if err != nil {
 		fatalErr(err)
 	}
 
-	parseFiles(*dir, files)
+	parseFiles(*srcDir, files)
 }
